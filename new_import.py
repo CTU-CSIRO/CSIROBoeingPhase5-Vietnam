@@ -318,3 +318,37 @@ def save_result(result, HT_MAP):
         # plt.title(f'{HT_MAP[k]["name"]}')
         # plt.axis('off')
         # plt.show()
+        
+
+def accuracy_test(test, data_array):
+    # cấu hình nhãn dữ liệu
+    label_mapping = {
+        "Lua tom": "0",
+        "Lua": "1",
+        "CHN": "2",
+        "CLN": "3",
+        "TS": "4",
+        "Song": "5",
+        "Dat xay dung": "6",
+        "Rung": "7"
+    }
+
+    chk = []
+    pred = []
+    dd = []
+    for idx, point in test.iterrows():
+        label = point.LULC
+        predict = data_array.sel(x=point.geometry.x, y=point.geometry.y, method='nearest').values
+        pred.append(label_mapping[label])
+        dd.append(str(predict))
+        chk.append(predict == int(label_mapping[label]))
+    test["code"] = pred
+    test["dd"] = dd
+    test["check"] = chk
+    path = "ThuanHoa/TestAccuracy"
+    if not os.path.exists(path):
+        os.mkdir(path)
+    test.to_file(f"{path}/result.shp")
+    
+    percentage_true = np.mean(chk) * 100
+    print(f"độ chính xác: {percentage_true:.2f}%")
