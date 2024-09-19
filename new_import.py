@@ -318,3 +318,28 @@ def save_result(result, HT_MAP):
         # plt.title(f'{HT_MAP[k]["name"]}')
         # plt.axis('off')
         # plt.show()
+        
+def load_data_sen1(dc, date_range, coordinates):
+    longtitude_range, latitude_range = coordinates
+    data_sen1 = dc.load(
+        product="sentinel1_grd_gamma0_20m",
+        x=longtitude_range,
+        y=latitude_range,
+        time=date_range,
+        measurements=["vv", "vh"],
+        output_crs="EPSG:32648",
+        resolution=(-10,10),
+        dask_chunks={"x":2048, "y":2048},
+        skip_broken_datasets=True,
+        group_by='solar_day'
+    )
+    
+    notebook_utils.heading(notebook_utils.xarray_object_size(data_sen1))
+    display(data_sen1)
+    dsvh = data_sen1.vh
+    dsvv = data_sen1.vv
+    
+    return dsvh, dsvv
+    
+def calculate_average(data, time_pattern='1M'):
+    return data.resample(time=time_pattern).mean().persist()
