@@ -72,6 +72,12 @@ from datashader import reductions
 from bokeh.models.tickers import FixedTicker
 from rioxarray.merge import merge_arrays
 
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
+
 import joblib
 
 
@@ -343,3 +349,99 @@ def load_data_sen1(dc, date_range, coordinates):
     
 def calculate_average(data, time_pattern='1M'):
     return data.resample(time=time_pattern).mean().persist()
+
+
+def load_data_sen2(dc, date_range, coordinates):
+    longtitude_range, latitude_range = coordinates
+    product = 's2_l2a'
+    query = {
+        'product': product,                     # Product name
+        'x': longtitude_range,    # "x" axis bounds
+        'y': latitude_range,      # "y" axis bounds
+        'time': date_range,           # Any parsable date strings
+    }
+    native_crs = notebook_utils.mostcommon_crs(dc, query)
+    print(f'Most common native CRS: {native_crs}')
+    
+    # measurements = ['red','green', 'blue', 'nir', 'scl']
+    measurements = ['red', 'nir', 'scl']
+
+    load_params = {
+        'measurements': measurements,                   # Selected measurement or alias names
+        'output_crs': native_crs,                       # Target EPSG code
+        'resolution': (-10, 10),                        # Target resolution
+        'group_by': 'solar_day',                        # Scene grouping
+        'dask_chunks': {'x': 2048, 'y': 2048},          # Dask chunks
+    }
+    data = load_s2l2a_with_offset(
+        dc,
+        query | load_params   # Combine the two dicts that contain our search and load parameters
+    )
+    return data
+
+def mask_cloud(data):
+    flag_name = 'scl'
+    flag_desc = masking.describe_variable_flags(data[flag_name])  # Pandas dataframe
+    display(flag_desc.loc['qa'].values[1])
+    # Create a "data quality" Mask layer
+    flags_def = flag_desc.loc['qa'].values[1]
+    good_pixel_flags = [flags_def[str(i)] for i in [2, 4, 5, 6]]  # To pass strings to enum_to_bool()
+
+    # enum_to_bool calculates the pixel-wise "or" of each set of pixels given by good_pixel_flags
+    # 1 = good data
+    # 0 = "bad" data
+    good_pixel_mask = enum_to_bool(data[flag_name], good_pixel_flags)
+    data_layer_names = [x for x in data.data_vars if x != 'scl']
+    # Apply good pixel mask to blue, green, red and nir.
+    result = data[data_layer_names].where(good_pixel_mask).persist()
+    return result
+
+def find_best_model(dataset):
+    X_train, X_val, y_train, y_val = dataset
+    # Tạo RandomForestClassifier mặc định để sử dụng làm mô hình ban đầu trong pipeline
+    base_model = RandomForestClassifier(random_state=42, n_jobs=-1)
+
+    # Tạo pipeline
+    pipeline = Pipeline([
+        # ('imputer', SimpleImputer(strategy='mean')),
+        ('scaler', StandardScaler()),
+        ('classifier', base_model),
+    ])
+    # Thiết lập các tham số bạn muốn tối ưu hóa
+    param_grid = {
+        'classifier__n_estimators': [100, 300, 500, 700, 1000],
+        'classifier__max_depth': [6, 8, 10, 15, 20],
+        'classifier__criterion': ['gini', 'entropy'],
+    }
+
+    # Sử dụng GridSearchCV để tìm bộ tham số tốt nhất
+    grid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
+    grid_search.fit(X_train, y_train)
+
+    # In ra bộ tham số tốt nhất
+    best_params = grid_search.best_params_
+    print("Best Parameters:", best_params)
+
+    # Dự đoán trên tập kiểm tra
+    y_pred = grid_search.predict(X_val)
+
+    # Đánh giá kết quả
+    accuracy = accuracy_score(y_val, y_pred)
+    print(f"Accuracy: {round(accuracy, 2)*100} %")
+    return grid_search
+
+def save_result_new(result, save_path, HT_MAP):
+    # cmap = ListedColormap(colors)
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+
+    for k, v in result.items():
+        rs = merge_arrays(v, nodata = np.nan)
+        rs.rio.to_raster(f"{save_path}/{k}.tif")
+        print(f"save {save_path}/{k}.tif")
+        # img = rs.plot(cmap=cmap, add_colorbar=False)
+        # cbar = plt.colorbar(img)
+        # cbar.ax.set_yticklabels(labels)
+        # plt.title(f'{HT_MAP[k]["name"]}')
+        # plt.axis('off')
+        # plt.show()
