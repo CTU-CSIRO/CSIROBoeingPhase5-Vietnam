@@ -210,22 +210,71 @@ def create_dataset(train, average_ndvi, dsvh, dsvv):
     return loaded_datasets
 
 
+# def split_train_data(train, label_mapping, datasets):
+#     label_encoder = LabelEncoder()
+#     # Fit and transform the labels
+#     labels = train.Hientrang.values
+#     numeric_labels = label_encoder.fit_transform([label_mapping[label] for label in labels])
+#     X = []
+#     x_new = []
+#     lb_new = []
+#     for k, v in datasets.items():
+#         X.append(v)
+#     for i in range(len(X)):
+#         if X[i] is not None:
+#             x_new.append(X[i]["data"])
+#             lb_new.append(numeric_labels[i])
+#     X_train, X_test, y_train, y_test= train_test_split(x_new, lb_new, test_size=0.2, random_state=42)
+#     return X_train, X_test, y_train, y_test
+
+# import numpy as np
+# from sklearn.preprocessing import LabelEncoder
+# from sklearn.model_selection import train_test_split
 def split_train_data(train, label_mapping, datasets):
     label_encoder = LabelEncoder()
+    
     # Fit and transform the labels
     labels = train.Hientrang.values
-    numeric_labels = label_encoder.fit_transform([label_mapping[label] for label in labels])
+    try:
+        numeric_labels = label_encoder.fit_transform([label_mapping[label] for label in labels])
+    except KeyError as e:
+        print(f"Label {e} not found in label_mapping.")
+        return None
+    
     X = []
     x_new = []
     lb_new = []
+    
+    # Lấy dữ liệu từ datasets
     for k, v in datasets.items():
         X.append(v)
+    
+    # Lọc dữ liệu không None và tạo các danh sách x_new và lb_new
     for i in range(len(X)):
         if X[i] is not None:
             x_new.append(X[i]["data"])
             lb_new.append(numeric_labels[i])
-    X_train, X_test, y_train, y_test= train_test_split(x_new, lb_new, test_size=0.2, random_state=42)
+    
+    # Kiểm tra kích thước
+    print(f"x_new length: {len(x_new)}, lb_new length: {len(lb_new)}")
+    
+    # Kiểm tra xem x_new và lb_new có dữ liệu hay không
+    if len(x_new) == 0 or len(lb_new) == 0:
+        print("Error: No valid data found.")
+        return None
+    
+    # Chuyển đổi thành NumPy arrays
+    x_new = np.array(x_new)
+    lb_new = np.array(lb_new)
+    
+    # Chia dữ liệu
+    X_train, X_test, y_train, y_test = train_test_split(x_new, lb_new, test_size=0.2, random_state=42)
+    
+    # In kích thước dữ liệu sau khi chia
+    print(f"X_train length: {len(X_train)}, y_train length: {len(y_train)}")
+    
     return X_train, X_test, y_train, y_test
+
 
 
 # def find_best_model(dataset):
@@ -273,8 +322,8 @@ def find_best_model(dataset, model_type):
         'svm': SVC(random_state=42),
         'naive_bayes': GaussianNB(),
     }
-    if model_type not in regressors:
-        raise ValueError(f"Invalid model_type: {model_type}. Available options are: {list(regressors.keys())}")
+    if model_type not in classifiers:
+        raise ValueError(f"Invalid model_type: {model_type}")
 
     # Select the appropriate classifier based on `model_type`
     classifier = classifiers.get(model_type, RandomForestClassifier(random_state=42, n_jobs=-1))
@@ -315,9 +364,6 @@ def find_best_model(dataset, model_type):
     # Get the best parameters
     best_params = grid_search.best_params_
     print("Best Parameters:", best_params)
-    # Predict on the validation set
-    y_pred = grid_search.predict(X_val)
-    # Evaluate the result
 
     return grid_search
 
@@ -350,7 +396,7 @@ def find_best_regressor(dataset, model_type):
             'regressor__max_depth': [6, 10, 15],
         },
         'svr': {
-            'regressor__kernel': ['linear', 'poly', 'rbf'],
+            'regressor__kernel': ['poly', 'linear'],
             'regressor__C': [0.1, 1, 10],
             'regressor__degree': [2, 3],  # For poly kernel
         },
@@ -383,6 +429,7 @@ def find_best_regressor(dataset, model_type):
 ########################################################################
 def cross_validate(train_data, model, num_fold=5):
     X_train, y_train = train_data
+    #X_train, y_train =  map(np.array, train_data)
     rkf = RepeatedKFold(n_splits=num_fold, n_repeats=2, random_state=42)
     validation_scores = []
     for train_index, valid_index in rkf.split(X_train):
@@ -390,6 +437,7 @@ def cross_validate(train_data, model, num_fold=5):
         X_train_fold, X_valid_fold = X_train[train_index], X_train[valid_index]
         y_train_fold, y_valid_fold = y_train[train_index], y_train[valid_index]
         y_pred = model.predict(X_valid_fold)
+        #model.fit(X_train_fold, y_train_fold) 
         score = mean_squared_error(y_valid_fold, y_pred)
         # Store the score
         validation_scores.append(score)
@@ -500,3 +548,37 @@ def save_result(result, save_path, HT_MAP):
         # plt.title(f'{HT_MAP[k]["name"]}')
         # plt.axis('off')
         # plt.show()
+        
+
+def accuracy_test(test, data_array):
+    # cấu hình nhãn dữ liệu
+    label_mapping = {
+        "Lua tom": "0",
+        "Lua": "1",
+        "CHN": "2",
+        "CLN": "3",
+        "TS": "4",
+        "Song": "5",
+        "Dat xay dung": "6",
+        "Rung": "7"
+    }
+
+    chk = []
+    pred = []
+    dd = []
+    for idx, point in test.iterrows():
+        label = point.LULC
+        predict = data_array.sel(x=point.geometry.x, y=point.geometry.y, method='nearest').values
+        pred.append(label_mapping[label])
+        dd.append(str(predict))
+        chk.append(predict == int(label_mapping[label]))
+    test["code"] = pred
+    test["dd"] = dd
+    test["check"] = chk
+    path = "ThuanHoa/TestAccuracy"
+    if not os.path.exists(path):
+        os.mkdir(path)
+    test.to_file(f"{path}/result.shp")
+    
+    percentage_true = np.mean(chk) * 100
+    print(f"độ chính xác: {percentage_true:.2f}%")
