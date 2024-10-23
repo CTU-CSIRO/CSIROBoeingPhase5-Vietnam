@@ -328,7 +328,7 @@ def save_result(result, HT_MAP):
 def load_data_sen1(dc, date_range, coordinates):
     longtitude_range, latitude_range = coordinates
     data_sen1 = dc.load(
-        product="sentinel1_grd_gamma0_20m",
+        product="sentinel1_grd_gamma0_10m",
         x=longtitude_range,
         y=latitude_range,
         time=date_range,
