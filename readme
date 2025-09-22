@@ -1,1 +1,23 @@
-this branch contains code for fourier cloud processing with VH and NDVI
+
+1. Download "input" folder data from https://1drv.ms/f/c/b48843181d6ca35c/EpQhmtEgdbNBjc-yee_xqVUBZfzGQxuJWsUVnUv9VrUaHA?e=DE2wwk  or prepare your own data. Ensure there are  folders below inside "input" folder
+ - "local" foler: contains NDVI and VH data 
+ - "mask" folder: contains mask data of land purpose (CLN, CHN, lua2v, .....)
+ - "non_nan" folder: contains data without NaN data over 13 months
+
+
+2. Preparing code from github
+
+3. Run code:
+- Code 01: Find all pixels without NaN data over 13 months with the prepared mask for. After running this code we will have a folder without NaN data for each land type
+- Code 02: Run code to find best scale and bias for each land type. 
+![alt text](image.png)
+The console show the data like in the image and copy data and write to file fourierParam.py with defined structure
+![alt text](image-1.png)
+- Code 03: Run code to fill cloud pixels.  To run this code, we need to prepare somethings: 
++ ndvi data: path to ndvi data you want to predict
++ vh_data: path to vh data you want to predict
++ input path: path to mask of land type
++ scale, bias: get from file we run in previous code
++ output_path: path to output file after predicting
+* Run in loop for all land type of the area
+- Code 04: . After running previous code, we will have multiple files predicted for each land type. Run this code to concat all file into 1 file. To run this code, preparing file_path, path to predicted ndvi in previous code and output path to save the concatenated file.
